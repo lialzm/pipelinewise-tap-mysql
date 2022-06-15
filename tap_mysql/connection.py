@@ -89,7 +89,7 @@ class MySQLConnection(pymysql.connections.Connection):
             "host": config["host"],
             "port": int(config["port"]),
             "cursorclass": config.get("cursorclass") or pymysql.cursors.SSCursor,
-            "connect_timeout": config.get("connect_timeout", DEFAULT_CONNECT_TIMEOUT_SECONDS) ,
+            "connect_timeout": int(config.get("connect_timeout", DEFAULT_CONNECT_TIMEOUT_SECONDS)) ,
             "charset": "utf8",
         }
 
