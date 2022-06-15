@@ -1,7 +1,3 @@
-Unreleased
-------------------
-* Add possibility to overwrite `connect_timeout` argument
-
 1.5.1 (2022-04-04)
 ------------------
 * Fix: Handle case when BINLOG_GTID_POS returns multiple comma separated GTIDs
