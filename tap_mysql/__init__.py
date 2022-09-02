@@ -204,8 +204,10 @@ def do_sync_incremental(mysql_conn, catalog_entry, state, columns):
 
 
 # pylint: disable=too-many-arguments
-def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gtid: bool, engine: str):
+def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gtid: bool, engine: str,log_mode:str = 'initial'):
     binlog.verify_binlog_config(mysql_conn)
+    LOGGER.info('do_sync_historical_binlog')
+
 
     if use_gtid and engine == MYSQL_ENGINE:
         binlog.verify_gtid_config(mysql_conn)
@@ -214,6 +216,8 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
 
     if is_view:
         raise Exception(f"Unable to replicate stream({catalog_entry.stream}) with binlog because it is a view.")
+    LOGGER.info("catalog_entry.tap_stream_id")
+    LOGGER.info(catalog_entry.tap_stream_id)
 
     log_file = singer.get_bookmark(state,
                                    catalog_entry.tap_stream_id,
@@ -222,6 +226,9 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
     log_pos = singer.get_bookmark(state,
                                   catalog_entry.tap_stream_id,
                                   'log_pos')
+
+    LOGGER.info("log_pos")
+    LOGGER.info(str(log_file)+","+str(log_pos))
 
     gtid = None
     if use_gtid:
@@ -248,7 +255,6 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
                                       'initial_binlog_complete',
                                       False)
 
-        current_log_file, current_log_pos = binlog.fetch_current_log_file_and_pos(mysql_conn)
 
         current_gtid = None
         if use_gtid:
@@ -258,45 +264,59 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
                                       catalog_entry.tap_stream_id,
                                       'version',
                                       stream_version)
+        current_log_file, current_log_pos = binlog.fetch_current_log_file_and_pos(mysql_conn)
+        LOGGER.info('log_mode')
+        LOGGER.info(log_mode)
 
-        if full_table.pks_are_auto_incrementing(mysql_conn, catalog_entry):
-            # We must save log_file, log_pos, gtid across FULL_TABLE syncs when using
-            # an incrementing PK
+        if 'schema_only'==log_mode:
             state = singer.write_bookmark(state,
-                                          catalog_entry.tap_stream_id,
-                                          'log_file',
-                                          current_log_file)
+                                        catalog_entry.tap_stream_id,
+                                        'log_file',
+                                        current_log_file)
 
             state = singer.write_bookmark(state,
-                                          catalog_entry.tap_stream_id,
-                                          'log_pos',
-                                          current_log_pos)
-
-            if current_gtid:
-                state = singer.write_bookmark(state,
-                                              catalog_entry.tap_stream_id,
-                                              'gtid',
-                                              current_gtid)
-
-            full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
-
+                                        catalog_entry.tap_stream_id,
+                                        'log_pos',
+                                        current_log_pos)
         else:
-            full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
-            state = singer.write_bookmark(state,
-                                          catalog_entry.tap_stream_id,
-                                          'log_file',
-                                          current_log_file)
-
-            state = singer.write_bookmark(state,
-                                          catalog_entry.tap_stream_id,
-                                          'log_pos',
-                                          current_log_pos)
-
-            if current_gtid:
+            if full_table.pks_are_auto_incrementing(mysql_conn, catalog_entry):
+                # We must save log_file, log_pos, gtid across FULL_TABLE syncs when using
+                # an incrementing PK
                 state = singer.write_bookmark(state,
-                                              catalog_entry.tap_stream_id,
-                                              'gtid',
-                                              current_gtid)
+                                            catalog_entry.tap_stream_id,
+                                            'log_file',
+                                            current_log_file)
+
+                state = singer.write_bookmark(state,
+                                            catalog_entry.tap_stream_id,
+                                            'log_pos',
+                                            current_log_pos)
+
+                if current_gtid:
+                    state = singer.write_bookmark(state,
+                                                catalog_entry.tap_stream_id,
+                                                'gtid',
+                                                current_gtid)
+
+                full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
+
+            else:
+                full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
+                state = singer.write_bookmark(state,
+                                            catalog_entry.tap_stream_id,
+                                            'log_file',
+                                            current_log_file)
+
+                state = singer.write_bookmark(state,
+                                            catalog_entry.tap_stream_id,
+                                            'log_pos',
+                                            current_log_pos)
+
+                if current_gtid:
+                    state = singer.write_bookmark(state,
+                                                catalog_entry.tap_stream_id,
+                                                'gtid',
+                                                current_gtid)
 
 
 def do_sync_full_table(mysql_conn, catalog_entry, state, columns):
@@ -336,6 +356,8 @@ def sync_non_binlog_streams(mysql_conn, non_binlog_catalog, state, use_gtid, eng
 
         replication_method = md_map.get((), {}).get('replication-method')
 
+        log_mode = md_map.get((), {}).get('log-mode')
+
         database_name = common.get_database_name(catalog_entry)
 
         with metrics.job_timer('sync_table') as timer:
@@ -347,7 +369,7 @@ def sync_non_binlog_streams(mysql_conn, non_binlog_catalog, state, use_gtid, eng
             if replication_method == 'INCREMENTAL':
                 do_sync_incremental(mysql_conn, catalog_entry, state, columns)
             elif replication_method == 'LOG_BASED':
-                do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gtid, engine)
+                do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gtid, engine,log_mode)
             elif replication_method == 'FULL_TABLE':
                 do_sync_full_table(mysql_conn, catalog_entry, state, columns)
             else:
