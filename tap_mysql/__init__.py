@@ -206,7 +206,6 @@ def do_sync_incremental(mysql_conn, catalog_entry, state, columns):
 # pylint: disable=too-many-arguments
 def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gtid: bool, engine: str,log_mode:str = 'initial'):
     binlog.verify_binlog_config(mysql_conn)
-    LOGGER.info('do_sync_historical_binlog')
 
 
     if use_gtid and engine == MYSQL_ENGINE:
@@ -216,8 +215,6 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
 
     if is_view:
         raise Exception(f"Unable to replicate stream({catalog_entry.stream}) with binlog because it is a view.")
-    LOGGER.info("catalog_entry.tap_stream_id")
-    LOGGER.info(catalog_entry.tap_stream_id)
 
     log_file = singer.get_bookmark(state,
                                    catalog_entry.tap_stream_id,
@@ -227,8 +224,6 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
                                   catalog_entry.tap_stream_id,
                                   'log_pos')
 
-    LOGGER.info("log_pos")
-    LOGGER.info(str(log_file)+","+str(log_pos))
 
     gtid = None
     if use_gtid:
@@ -246,7 +241,7 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
 
     if max_pk_values and ((use_gtid and gtid) or (log_file and log_pos)):
         LOGGER.info("Resuming initial full table sync for LOG_BASED stream %s", catalog_entry.tap_stream_id)
-        full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
+        full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version,config)
     else:
         LOGGER.info("Performing initial full table sync for LOG_BASED stream %s", catalog_entry.tap_stream_id)
 
@@ -265,8 +260,6 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
                                       'version',
                                       stream_version)
         current_log_file, current_log_pos = binlog.fetch_current_log_file_and_pos(mysql_conn)
-        LOGGER.info('log_mode')
-        LOGGER.info(log_mode)
 
         if 'schema_only'==log_mode:
             state = singer.write_bookmark(state,
@@ -298,10 +291,10 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
                                                 'gtid',
                                                 current_gtid)
 
-                full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
+                full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version,config)
 
             else:
-                full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
+                full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version,config)
                 state = singer.write_bookmark(state,
                                             catalog_entry.tap_stream_id,
                                             'log_file',
@@ -319,14 +312,14 @@ def do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gti
                                                 current_gtid)
 
 
-def do_sync_full_table(mysql_conn, catalog_entry, state, columns):
+def do_sync_full_table(mysql_conn, catalog_entry, state, columns,config):
     LOGGER.info("Stream %s is using full table replication", catalog_entry.stream)
 
     write_schema_message(catalog_entry)
 
     stream_version = common.get_stream_version(catalog_entry.tap_stream_id, state)
 
-    full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version)
+    full_table.sync_table(mysql_conn, catalog_entry, state, columns, stream_version,config)
 
     # Prefer initial_full_table_complete going forward
     singer.clear_bookmark(state, catalog_entry.tap_stream_id, 'version')
@@ -339,7 +332,7 @@ def do_sync_full_table(mysql_conn, catalog_entry, state, columns):
     singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
 
 
-def sync_non_binlog_streams(mysql_conn, non_binlog_catalog, state, use_gtid, engine):
+def sync_non_binlog_streams(mysql_conn, non_binlog_catalog, state, use_gtid, engine,config):
     for catalog_entry in non_binlog_catalog.streams:
         columns = list(catalog_entry.schema.properties.keys())
 
@@ -371,7 +364,7 @@ def sync_non_binlog_streams(mysql_conn, non_binlog_catalog, state, use_gtid, eng
             elif replication_method == 'LOG_BASED':
                 do_sync_historical_binlog(mysql_conn, catalog_entry, state, columns, use_gtid, engine,log_mode)
             elif replication_method == 'FULL_TABLE':
-                do_sync_full_table(mysql_conn, catalog_entry, state, columns)
+                do_sync_full_table(mysql_conn, catalog_entry, state, columns,config)
             else:
                 raise Exception("only INCREMENTAL, LOG_BASED, and FULL TABLE replication methods are supported")
 
@@ -402,7 +395,7 @@ def do_sync(mysql_conn, config, catalog, state):
                             non_binlog_catalog,
                             state,
                             config['use_gtid'],
-                            config['engine']
+                            config['engine'],config
                             )
     sync_binlog_streams(mysql_conn, binlog_catalog, config, state)
 
@@ -442,6 +435,9 @@ def main_impl():
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     mysql_conn = MySQLConnection(args.config)
+    LOGGER.info('=====')
+    LOGGER.info(type(args.config))
+    LOGGER.info('=====eeeeeee====')
     log_server_params(mysql_conn)
 
     if args.discover:

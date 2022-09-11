@@ -91,9 +91,13 @@ def generate_select_sql(catalog_entry, columns):
 
 def row_to_singer_record(catalog_entry, version, row, columns, time_extracted):
     row_to_persist = ()
+    md_map = metadata.to_map(catalog_entry.metadata)
+
+    zero_date_time_behavior = md_map.get((), {}).get('zero_date_time_behavior')
     for idx, elem in enumerate(row):
         property_type = catalog_entry.schema.properties[columns[idx]].type
         property_format = catalog_entry.schema.properties[columns[idx]].format
+
 
         if isinstance(elem, datetime.datetime):
             row_to_persist += (elem.isoformat() + '+00:00',)
@@ -119,6 +123,9 @@ def row_to_singer_record(catalog_entry, version, row, columns, time_extracted):
             row_to_persist += (boolean_representation,)
 
         else:
+            if zero_date_time_behavior=='convert_to_null':
+                if property_format=='date-time' and elem=='0000-00-00 00:00:00':
+                    elem=None
             row_to_persist += (elem,)
     rec = dict(zip(columns, row_to_persist))
 
