@@ -251,10 +251,10 @@ def schema_for_column(column):  # pylint: disable=too-many-branches
 
     result = Schema(inclusion=inclusion)
 
-    if data_type in BOOL_TYPES or column_type.startswith('tinyint(1)'):
+    if data_type in BOOL_TYPES:
         result.type = ['null', 'boolean']
 
-    elif data_type in BYTES_FOR_INTEGER_TYPE:
+    elif data_type in BYTES_FOR_INTEGER_TYPE or column_type.startswith('tinyint(1)'):
         result.type = ['null', 'integer']
         bits = BYTES_FOR_INTEGER_TYPE[data_type] * 8
         if 'unsigned' in column_type:
