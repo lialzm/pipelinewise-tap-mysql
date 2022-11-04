@@ -58,6 +58,10 @@ def get_database_name(catalog_entry):
     return md_map.get((), {}).get('database-name')
 
 
+def get_sql(catalog_entry):
+    md_map = metadata.to_map(catalog_entry.metadata)
+    return md_map.get((), {}).get('sql')
+
 def generate_select_sql(catalog_entry, columns):
     database_name = get_database_name(catalog_entry)
     escaped_db = escape(database_name)
@@ -83,6 +87,9 @@ def generate_select_sql(catalog_entry, columns):
             escaped_columns.append(escaped_col)
 
     select_sql = f'SELECT {",".join(escaped_columns)} FROM {escaped_db}.{escaped_table}'
+    sql=get_sql(catalog_entry)
+    if sql is not None:
+        select_sql+=' where '+sql
 
     # escape percent signs
     select_sql = select_sql.replace('%', '%%')
