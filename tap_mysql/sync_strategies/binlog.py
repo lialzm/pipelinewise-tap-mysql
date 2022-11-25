@@ -610,6 +610,12 @@ def _run_binlog_sync(
         log_file = reader.log_file
         log_pos = reader.log_pos
 
+        LOGGER.debug('_run_binlog_sync: log_file=%s, log_pos=%d,end_log_file=%s,end_log_pos=%s',
+                         log_file,
+                         log_pos,
+                         end_log_file,
+                         end_log_pos)
+
         # The iterator across python-mysql-replication's fetchone method should ultimately terminate
         # upon receiving an EOF packet. There seem to be some cases when a MySQL server will not send
         # one causing binlog replication to hang.
