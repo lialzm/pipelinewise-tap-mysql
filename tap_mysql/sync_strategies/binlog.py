@@ -610,7 +610,7 @@ def _run_binlog_sync(
         log_file = reader.log_file
         log_pos = reader.log_pos
 
-        LOGGER.debug('_run_binlog_sync: log_file=%s, log_pos=%d,end_log_file=%s,end_log_pos=%s',
+        LOGGER.info('_run_binlog_sync: log_file=%s, log_pos=%d,end_log_file=%s,end_log_pos=%s',
                          log_file,
                          log_pos,
                          end_log_file,
